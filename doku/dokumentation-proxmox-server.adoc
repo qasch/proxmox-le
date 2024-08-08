@@ -289,6 +289,25 @@ Anzeige der in einem Debian Paket enthaltenen Dateien:
  dpkg -L <paket>
  dpkg -L bat
 
+Neustart (Node, Container, Linux):
+
+ reboot
+ systemctl reboot
+
+DNS Einträge abfragen:
+
+ host <url>
+ dig <url>
+ nslookup <url>
+
+ ping <url>
+
+Anzeige der zuletzt bzw. momentan am System angemeldeten Benutzern:
+
+ who
+ w
+ last
+
 === Proxmox Kommandos
 
 Auf dem Proxmox Node.
@@ -299,15 +318,11 @@ Anzeige aller Container:
 
 Starten eines Containers:
 
- 
+ pct start <ct-id>
+ pct start 100
 
+Container betreten:
 
-
-
-
-
-
-
-
-
+ pct enter <ct-id>
+ pct enter 100
 
