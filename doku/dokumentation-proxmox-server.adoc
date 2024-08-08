@@ -100,7 +100,7 @@ Bei der Installation von Proxmox wird automatisch eine Bridge `vmbr0` erstellt, 
 
 In der Weboberfläche erhält man über _pve_ -> _Network_ eine Übersicht über die vorhandenen NICs. Hier können auch weitere Adapter hinzugefügt werden. 
 
-*Achtung:* Wird die Konfiguration über die Weboberfläche geändert, überschreibt diese eine ggf. vorhanden Konfiguration in der Datei `/etc/network/interfaches`.
+*Achtung:* Wird die Konfiguration über die Weboberfläche geändert, überschreibt diese eine ggf. vorhanden Konfiguration in der Datei `/etc/network/interfaces`.
 
 Links: 
 
@@ -146,6 +146,8 @@ Nun kann über _Create CT_ ein Container erstellt werden. Auch hier sollte auf d
 
 In einem Produktivsystem sollten alle Container und VMs über eine statische bzw. sich nicht ändernde IP Adresse verfügen. Diese kann entweder statisch bei der Installation oder über die Verwendung eines DHCP Servers (s.u.) erfolgen.
 
+Die Container sollten nach einem Neustart von Proxmox automatisch neu gestartet werden. Dazu unter `Options` des jeweiligen Containers _Start at boot_ auf _Yes_ stellen_.
+
 Links:
 
 - https://pve.proxmox.com/wiki/Linux_Container
@@ -187,14 +189,125 @@ Log von `kea` live beobachten:
 
  journalctl -u kea-dhcp4-server -f
 
+Sollte es zu Problemen kommen, dass der Server nicht gestartet werden konnte weil eine Reservation nicht im Subnetz ist, ggf. Proxmox komplett neu starten und etwas warten. Könnte mit Hyper-V zusammenhängen...
+
 Links:
 
 - https://ubuntu.com/server/docs/how-to-install-and-configure-isc-kea
 
 === DNS Server
 
+Als DNS Server kommt `bind9` in einem Ubuntu Container zum Einsatz.
+
+ apt install bind9 bind9utils
+
+Dem DNS Container wird die Standard Bridge `vmbr0` zugewiesen, da er auch von außen erreichbar sein soll. Der DNS Server benötigt eine statische IP. Die Vergabe erfolgt über DHCP bzw. den DHCP Container. Folgende Konfigurationsdateien werden bearbeitet:
+
+==== /etc/bind/named.conf.options
+
+Hier wird eigentlich nur der Forwarder eingetragen, welcher benutzt wird, sollte kein entsprechendr Eintrag vorhanden sein. Außerdem die rekursive Namensauflösung `recursion yes`.
+
+https://github.com/qasch/proxmox-le/blob/main/dns/named.conf.options
+
+==== /etc/bind/named.conf.local
+
+Hier werden die Zonen definiert und die Dateien angegeben, welche die eigentlichen Definitionen enthalten.
+
+https://github.com/qasch/proxmox-le/blob/main/dns/named.conf.local
+
+==== /etc/bind/zones/pve.loc
+
+Die Forward Looking Zone mit einem NS Eintrag für den/die Nameserver und den A Records der Clients.
+
+https://github.com/qasch/proxmox-le/blob/main/dns/zones/pve.loc
+
+==== /etc/bind/zones/pve.loc.rev
+
+Die Reverse Looking Zone analog zu oben. IP Adressen aus dem Subnetz können abgekürzt angegeben werden, in dem nur das letzte Oktet eingetragen wird. Bei IP Adressen außerhalb des Subnetzes wird die gesamte IP angegeben.
+
+https://github.com/qasch/proxmox-le/blob/main/dns/zones/pve.loc.rev
+
+Neustart mittels:
+
+ systemctl restart bind9
 
 === Proxy Server
 
+Da sich die Container in einem Subnetz befinden, sind sie von außen nicht erreichbar. Um trotzdem z.B. auf einen Webserver zugreifen zu können wird ein _Reverse Proxy_ eingerichtet. Der Proxy könnte dann auch alle SSL-Zertifikate für die einzelnen Container bereitstellen. 
+
+Der Proxy Container benötigt auch wieder beide Bridges. Die erste Bridge `vmbr0` benötigt eine statische IP (statisch vergeben oder per DHCP Server). Hierüber ist der Zugang zum Internet möglich, über die Bridge `vmbr1` können Anfragen von und zu den Containern verarbeitet werden.
+
+Wir verweden den Webserver `nginx` als Reverse Proxy, Alternativen wie z.B. `traefik` sind aber auch möglich.
+
+ apt install nginx
+
+==== Konfiguration
+
+Für jeden (Web)Server wird eine eigene Datei unter `/etc/nginx/sites-available` angelegt. Die Konfiguration ist bewusst sehr simpel gehalten und es erfolgt lediglich eine Weiterleitung der Anfrage über die Direktive `proxy_pass` an den jeweiligen Container. Denkbar ist aber auch eine komplexere Konfiguration mit SSL Zertifikaten, Redirect etc.
+
+https://github.com/qasch/proxmox-le/blob/main/proxy/webserver.conf
+
+*Wichtig:* Die Konfigurationsdateien müssen noch in das Verzeichnis `/etc/nginc/sites-enabled` versymlinkt werden:
+
+ ln -s /etc/nginx/sites-available/webserver.conf /etc/nginx/sites-enabled/
+
+Syntax Test der Konfiguration:
+
+ nginx -t
+
+Erneutes Einlesen der Konfiguration:
+
+ systemctl reload ngin
 
 === Webserver
+
+Einfacher Container mit einem installierten Webserver (`apache2` oder `nginx`) zum Testen der DHCP und DNS Konfiguration.
+
+Vergabe der IP Adresse erfolgt über den DHCP Container, gleichzeitig kann so die Reverse Proxy Konfiguration und die DNS Konfiguration getestet werden.
+
+Um mittels URL auf diesn Container zugreifen zu können, muss die IP des DNS Containers in die `/etc/resolv.conf` auf dem Rechner eingetragen werden, von welchem aus die Anfrage gestellt wird. Unter Windows nutzen wir die GUI. Achtung bei der Verwendung eines VPNs - richtige Netzwerkkarte auswählen.
+
+== CLI Kommandos
+
+Anzeige von IP und MAC Adressen:
+
+ ip a
+ ip -br a
+
+Auf Ubuntu Systemen geht auch:
+
+ netplan status
+
+Aufruf einer Website aus einem Container/Server ohne grafische Oberfläche:
+
+ curl localhost
+ curl <ip-adresse>
+ curl <url>
+
+Anzeige der in einem Debian Paket enthaltenen Dateien:
+
+ dpkg -L <paket>
+ dpkg -L bat
+
+=== Proxmox Kommandos
+
+Auf dem Proxmox Node.
+
+Anzeige aller Container:
+
+ pct list
+
+Starten eines Containers:
+
+ 
+
+
+
+
+
+
+
+
+
+
+
