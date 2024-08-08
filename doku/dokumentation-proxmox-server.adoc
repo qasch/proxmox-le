@@ -1,4 +1,5 @@
 = Dokumentation Proxmox Server
+:toc:
 
 == Installation und Konfiguration Proxmox Node 
 
@@ -90,30 +91,114 @@ Oben erstellen Pool für Backups nutzen. In der Weboberfläche von Proxmox:
 
  Datacenter -> Storage -> Add -> Directory -> backups eintragen -> Directory: /rpool/backups -> Add
 
+*Achtung:* In einem Produktivsystem sollte sichergestellt sein, dass die Backups auf ein anderes Speichermedium verschoben bzw. initial gespeichert werden, da ansonsten bei einem Ausfall/Fehler auch die Backups verlohren gehen könnten.
+
 Links:
 
 https://forum.proxmox.com/threads/festplatte-backups-funktionieren-nicht.87867/#post-385077
 
 ==== Backups einrichten
 
-Datacenter -> Backups -> Add -> Container/VMs und Zeitpunkte auswählen
+In der Proxmox Weboberfläche:
+
+ Datacenter -> Backups -> Add -> Container/VMs und Zeitpunkte auswählen
 
 === Netzwerkkonfigutaion
 
-==== Bridge
+Bei der Installation von Proxmox wird automatisch eine Bridge `vmbr0` erstellt, welche das reguläre Interface z.B. `eht0` bridged. Die Bridge ist nötig, damit auch die Container bzw. VMs darüber Zugang zum Netzwerk haben.
+
+In der Weboberfläche erhält man über _pve_ -> _Network_ eine Übersicht über die vorhandenen NICs. Hier können auch weitere Adapter hinzugefügt werden. 
+
+*Achtung:* Wird die Konfiguration über die Weboberfläche geändert, überschreibt diese eine ggf. vorhanden Konfiguration in der Datei `/etc/network/interfaches`.
+
+Links: 
+
+- https://pve.proxmox.com/wiki/Network_Configuration
 
 ==== Subnetz
 
+Es wird ein Subnetz erstellt, aus welchem die Container ihre IP Adresse beziehen. Der Grund hierfür ist zum einen, dass in einem Produktivsystem mit öffentlichen IP Adressen entweder für jeden Container eine separate IP Adresse vorhanden sein müsste oder ein Subnetz gebucht werden müsste. Des weiteren kann über das Subnetz sichergestellt werden, dass die Container nicht von außerhalt von Proxmox zugegriffen werden kann (Sicherheit).
+
+Die neue Bridge `vmbr1` wird über die Weboberfläche erstellt, so dass ihr auch ein Name bzw. ID zugewiesen werden kann. Diese ist wichtig, um die Bridge in anderen Containern (z.B. DHCP) verwenden zu können.
+
+Die weiter Konfiguration erfolgt in der Datei `/etc/network/interfaces`. Zusätzlich werden hier Firewallregeln für NAT eingetragen. 
+
+Eine Beispiel Konfiguration findet sich hier:
+
+https://github.com/qasch/proxmox-le/blob/main/node/interfaces
 
 == VMs
 
-TODO
+Eine VM kann einfach über die Weboberfläche erstellt werden (_Create VM_). Vorher muss allerdings eine entsprechende ISO Datei in Prxomx hochgeladen werden:
+
+ Datacenter -> local(pve) -> ISO Iamges
+
+Bei der Erstellung auf die Wahl der richtigen Bridge achten! `vmbr0` wenn die VM *nicht* in das Subnetz soll, ansonsnten `vmbr1` auswählen.
+
+=== Einstellung in Hyper-V
+
+Bei der Verwendung von Hyper-V muss für jede VM die _KVM hardware virutalization_ in der Weboberfläche von Proxmox ausgeschaltet werden:
+
+ VM -> Options -> Edit -> KVM hardware virutalization -> No
 
 == Container
 
+In der Regel verwenden wir in  Proxmox keine VMs sondern LXC Container. Diese sind ähnlich wie docker Container deutlich resourcenschonender als VMs. 
+
+=== Container erstellen
+
+Auch Container können entweder über die Weboberfläche (_Create VM_) oder die Shell erstellt werden. Anders als bei docker werden für LXC keine Images heruntergeladen, sondern Templates verwendet. Auch diese müssen zuvor in Proxmox heruntergeladen werden. Proxmox bietet fertige Templates an:
+
+ Datacenter -> local(pve) -> CT Templates -> Templates
+
+Nun kann über _Create CT_ ein Container erstellt werden. Auch hier sollte auf die Wahl der richtigen Bridge (`vmbr1`) geachtet werden. 
+
+In einem Produktivsystem sollten alle Container und VMs über eine statische bzw. sich nicht ändernde IP Adresse verfügen. Diese kann entweder statisch bei der Installation oder über die Verwendung eines DHCP Servers (s.u.) erfolgen.
+
+Links:
+
+- https://pve.proxmox.com/wiki/Linux_Container
+- https://linuxcontainers.org/
+- https://www.redhat.com/de/topics/containers/whats-a-linux-container
+- https://de.wikipedia.org/wiki/LXC
+
 === DHCP Server
 
-https://ubuntu.com/server/docs/how-to-install-and-configure-isc-kea
+Als DHCP Server wird _Kea_ verwendet. Andere DHCP Server sind natürlich auch möglich.
+
+Als Template wird z.B. ein Ubuntu verwendet. In diesem Container wird das Paket `kea` installiert:
+
+ apt install kea
+
+Wichtig bei der Verwendung eines Subnetzes ist es, dass diesem Container *beide* Bridges zugewiesen werden. Nur so kann der DHCP Server IP Adressen für beide Netze bereitstellen. In unseren Fall scheint das nötig, da der DNS Server nicht in dem Subnetz ist und in der Konfiguration dieser DNS Server eingetragen ist. 
+
+Die Bridge `vmbr0` sollte hier eine statische IP aus dem "öffentlichen" Netz erhalten, die Bridge `vmbr1` wird mit der IP Adresse der Bridge (`192.168.200.1`) konfiguriert. Hier wird kein Gateway angegeben.
+
+Vielleicht gibt es hierfür auch eine andere Möglichkeit, da wir in einem Produktivsystem so eine weitere IP benötigen würden.
+
+==== Konfiguration
+
+Die Konfiguration erfolgt in der Datei `/etc/kea/kea-dhcp4.conf` (https://github.com/qasch/proxmox-le/blob/main/dhcp/kea-dhcp4.conf).
+
+Bei der Angabe des Interface ist auch die korrekte Bezeichnung der Bridge zu achten. Hier muss der Name ID der Bridge angegeben werden (`net1`) und *nicht* die Bezeichnung der Bridge `vmbr1`.
+
+Damit die Container statische IPs über den DHCP erhalten, müssen für diese die MAC Adressen z.B. mit dem Kommando `ip a` oder über die Weboberfläche von Proxmox (Reiter _Network_ im jeweiligen Container) ermittelt werden. Die MAC Adresse wird in der Konfiguration als `hw-address` unter `reservations` angegeben.
+
+Nach dem Ändern der Konfiguration muss der Dienst neu gestartet werden:
+
+ systemctl restart kea-dhcp4-server
+
+Bei Problemen kann ein Blick in das Journal hilfreich sein:
+
+ journalctl -u kea-dhcp4-server
+
+Log von `kea` live beobachten:
+
+ journalctl -u kea-dhcp4-server -f
+
+Links:
+
+- https://ubuntu.com/server/docs/how-to-install-and-configure-isc-kea
 
 === DNS Server
 
