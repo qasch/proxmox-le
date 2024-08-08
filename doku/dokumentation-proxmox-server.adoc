@@ -31,15 +31,6 @@ Links:
 
 === Einstellungen in Hyper-V
 
-TODO
-
-## HyperV Proxmox setup
-Set-VMProcessor -VMName 'vmname' -ExposeVirtualizationExtensions $true  # in Powersehll
-Enable MAC address spoofing on the internet adapter from Hyper-V settings of guest machine.
-
-
-==== Hyper-V settings für Proxmox
-
 Funktionierende Einstellugen sind z.B.:  
 
 - 8192 MB RAM  
@@ -47,15 +38,15 @@ Funktionierende Einstellugen sind z.B.:
 - 4 cores
 - 200 GB
 
-Nested Virtualization muss eingestellt werden, damit die Container und VMs IP Adressen per DHCP beziehen können: 
+_Nested Virtualization_ muss eingestellt werden, damit die Container und VMs IP Adressen per DHCP beziehen können: 
 
 In einer Admin Powershell/CMD auf der Windows Maschine in der Hyper-V läuft folgendes eingeben: 
 
  Set-VMProcessor -VMName 'vmname' -ExposeVirtualizationExtensions $true
 
-MAC Address Spoofing in Hyper-V einstellen:
+_MAC Address Spoofing_ in Hyper-V einstellen:
 
-Einstellungen -> Netzwerkkarte -> Erweiterte Features -> Haken bei _MAC Address Spoofing_ aktivieren
+ Einstellungen -> Netzwerkkarte -> Erweiterte Features -> Haken bei _MAC Address Spoofing_ aktivieren
 
 === Dateisystem
 
