@@ -1,0 +1,124 @@
+= Dokumentation Proxmox Server
+
+== Installation und Konfiguration Proxmox Node 
+
+Die Installation erfolgt in einer Virtuellen Maschine (z.B. Hyper-V, QEMU, Virtual Box), wobei bei der Verwendung von Hyper-V gewisse Einstellungen vorgenommen werden müssen (s.u.). In der Realität würde ein dedizierter Server für Proxmox verwendet werden, keine VM. Für kleinere Installationen ist ein Laptop z.B. ausreichend, es sollte auf ausreichend RAM und Speicherplatz geachtet werden.
+
+Das ISO Image zur Installation kann hier heruntergeladen werden: 
+
+https://www.proxmox.com/de/downloads/proxmox-virtual-environment/iso
+
+=== Paketquellen
+
+Bei der Verwendung von `apt` kommt es zu Fehlermeldungen aufgrund nicht signierter Repos. Dies liegt an der fehlenden Subscription für Proxmox. Proxmox ist aber auch ohne Subscription zu nutzen. Es müssen nur die entsprechenden _No-Subscription_ Repos eingetragen werden. Die Pakete darin sind im Vergleich nicht so ausgiebig getestet und der Betrieb wird für Produktivsysteme nicht empfohlen.
+
+Folgende Einträge in den beiden Dateien vorhehmen und die enthaltenen Repo-Links löschen oder auskommentieren:
+
+./etc/apt/sources.list.d/pve-enterprise.list
+----
+deb http://download.proxmox.com/debian/pve bookworm pve-no-subscription
+----
+
+./etc/apt/sources.list.d/ceph.list
+----
+deb http://download.proxmox.com/debian/ceph-quincy bookworm no-subscription
+----
+
+Links:
+
+- https://pve.proxmox.com/wiki/Package_Repositories
+
+=== Einstellungen in Hyper-V
+
+TODO
+
+## HyperV Proxmox setup
+Set-VMProcessor -VMName 'vmname' -ExposeVirtualizationExtensions $true  # in Powersehll
+Enable MAC address spoofing on the internet adapter from Hyper-V settings of guest machine.
+
+
+==== Hyper-V settings für Proxmox
+
+Funktionierende Einstellugen sind z.B.:  
+
+- 8192 MB RAM  
+- Secure Boot deaktivieren
+- 4 cores
+- 200 GB
+
+Nested Virtualization muss eingestellt werden, damit die Container und VMs IP Adressen per DHCP beziehen können: 
+
+In einer Admin Powershell/CMD auf der Windows Maschine in der Hyper-V läuft folgendes eingeben: 
+
+ Set-VMProcessor -VMName 'vmname' -ExposeVirtualizationExtensions $true
+
+MAC Address Spoofing in Hyper-V einstellen:
+
+Einstellungen -> Netzwerkkarte -> Erweiterte Features -> Haken bei _MAC Address Spoofing_ aktivieren
+
+=== Dateisystem
+
+Als Dateisystem wird ZFS genutzt. ZFS ist ein Copy-On-Write Dateisystem und bringt einige Vorteile mit, wie z.B. Kompression, Integritätschecks, Einrichtung von Pools mit Quotas etc.
+
+ZFS muss bei der Installation ausgewählt werden. Steht nur eine Festplatte zur Verfügung, wird `RAID0` ausgewählt.
+
+Links:
+
+- https://pve.proxmox.com/wiki/ZFS_on_Linux
+- https://arstechnica.com/information-technology/2020/05/zfs-101-understanding-zfs-storage-and-performance/
+
+=== Storages
+
+Bei der Verwendung von ZFS können _Pools_ erstellt werden. Diese verhalten sich ähnlich wie Partitionen, sind aber deutlich flexibler. Z.B. kann die Größe im laufenden Betrieb angepasst werden.
+
+In einer Shell auf dem Proxmox Node als `root` einen neuen _Pool_ mit dem Namen `backups` erstellen:
+
+ zfs create rpool/backups
+
+Quota/Größe für den Pool auf 60G setzen: 
+
+ zfs set quota=60G rpool/backups
+
+Informationen über vorhandene Pools abfragen: 
+
+ zfs get mounted,mountpoint,canmount rpool/backups
+ zfs list -t all
+
+=== Backups
+
+Oben erstellen Pool für Backups nutzen. In der Weboberfläche von Proxmox:
+
+ Datacenter -> Storage -> Add -> Directory -> backups eintragen -> Directory: /rpool/backups -> Add
+
+Links:
+
+https://forum.proxmox.com/threads/festplatte-backups-funktionieren-nicht.87867/#post-385077
+
+==== Backups einrichten
+
+Datacenter -> Backups -> Add -> Container/VMs und Zeitpunkte auswählen
+
+=== Netzwerkkonfigutaion
+
+==== Bridge
+
+==== Subnetz
+
+
+== VMs
+
+TODO
+
+== Container
+
+=== DHCP Server
+
+https://ubuntu.com/server/docs/how-to-install-and-configure-isc-kea
+
+=== DNS Server
+
+
+=== Proxy Server
+
+
+=== Webserver
